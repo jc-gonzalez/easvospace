@@ -23,4 +23,6 @@ A file with the name provided will be saved into the location your selected,
 in your VOSpace account.
 
 
-For an example of a working set of upload/download
+For an example of a working set of upload/download command lines using
+call to the `curl` command line tool, have a look into the Bash script
+`push-and-pull.sh`, in the `shell` folder.
