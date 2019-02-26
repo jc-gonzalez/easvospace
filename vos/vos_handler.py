@@ -19,7 +19,7 @@ Usage:
 
 """
 
-VERSION = '0.1.3'
+VERSION = '0.1.4'
 
 __author__ = "jcgonzalez" # Refactoring from ESDC Euclid Team code
 __credits__ = ["S.Nieto", "ESDC Euclid Team"]
@@ -30,6 +30,7 @@ __status__ = "Prototype" # Prototype | Development | Production
 
 from time import sleep
 from xml.dom.minidom import parseString
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 import requests
 import sys
@@ -69,7 +70,8 @@ class VOSpace_Handler(object):
         self.vospace_pwd = pwd
         self.vospace_auth_set = True
 
-    def save_to_file(self, folder, file, content, user=None, pwd=None):
+    def save_to_file(self, folder, file, content, filetype='application/octet-stream',
+                     user=None, pwd=None):
         """Makes a storage request, followed by the sending the actual data to be
         stored in the desired folder/file.  The VOSpace user credentials are needed."""
         if user is None or pwd is None:
@@ -86,7 +88,8 @@ class VOSpace_Handler(object):
         end_point = VOSpace_Handler.VOSpace_Url + '/service/data/'
 
         metadataTransfer = 'transfer_push_to_a.xml'  # Contains the path where to store the output file
-        toupload = file  # Name of the file to be uploaded in VOSpace
+        #toupload = file  # Name of the file to be uploaded in VOSpace
+        content_type=filetype # Content type of file to be uploaded in VOSpace, example 'text/fits'
 
         txData = VOSpace_Handler.Tx_XML_File.format(user, folder, 'pushToVoSpace')
         #print(txData + '\n');
@@ -125,10 +128,14 @@ class VOSpace_Handler(object):
         jobId_element = collection.getElementsByTagName('uws:jobId')[0]
         jobId = jobId_element.childNodes[0].data
 
-        files = {'file': (toupload, content)}
+        #files = {'file': (toupload, content)}
+        m = MultipartEncoder(fields={'field1': (file, content, content_type)})
 
         try:
-            upload_post = requests.post(end_point + user + "/" + jobId, files=files, auth=(user, pwd))
+            upload_post = requests.post(end_point + user + "/" + jobId, data=m,
+                                        headers={'Content-Type': m.content_type},
+                                        auth=(user, pwd), verify=False)
+            #upload_post = requests.post(end_point + user + "/" + jobId, files=files, auth=(user, pwd))
         except requests.exceptions.RequestException as e:  # This is the correct syntax
             #print (upload_post.text)
             sys.exit(1)
@@ -141,13 +148,14 @@ class VOSpace_Handler(object):
         upload_post.close()
         return result
 
-    def save_file(self, folder, file, local_file, user, pwd):
+    def save_file(self, folder, file, local_file, filetype='application/octet-stream',
+                   user=None, pwd=None):
         """Makes a storage request, followed by the sending the actual data to be
         stored in the desired folder/file.  The VOSpace user credentials are needed."""
         with open(local_file, "rb") as bin_file:
             # Read the whole file at once
             bin_data = bin_file.read()
-        return self.save_to_file(folder, file, bin_data, user, pwd)
+        return self.save_to_file(folder, file, bin_data, filetype, user, pwd)
 
     def retrieve_from_file(self, folder, file, user=None, pwd=None):
         """Makes a retrieval request, followed by the retrieval of the actual data to be
@@ -205,15 +213,13 @@ class VOSpace_Handler(object):
         jobId_element = collection.getElementsByTagName('uws:jobId')[0]
         jobId = jobId_element.childNodes[0].data
 
-        content = ''
-
         try:
-            download = requests.get(end_point + user + "/" + jobId, auth=(user, pwd), verify=False)
+            download = requests.get(end_point + user + "/" + jobId, auth=(user, pwd), verify=False, stream=True)
         except requests.exceptions.RequestException as e:  # This is the correct syntax
             print ("PROBLEM: " + download.text)
             exit(1)
         else:  # 200
-            content = download.content
+            #content = download.content
             # with open(todownload, 'wb') as f:
             #     f.write(download.content)
             # # print(upload_post.text)
@@ -227,14 +233,18 @@ class VOSpace_Handler(object):
         # curl -v -u <user> -X DELETE "https://localhost:8443/vospace/servlet/transfers/async/<job_Id>"
         request = requests.delete(redirection, auth=(user, pwd), verify=False)
         #print(request.status_code)
-        return content
+        return download
 
     def retrieve_file(self, folder, file, local_file, user=None, pwd=None):
         """Makes a retrieval request, followed by the retrieval of the actual data to be
                 stored in a local file.  The VOSpace user credentials are needed."""
-        with open(local_file, "wb") as bin_file:
+        #with open(local_file, "wb") as bin_file:
             # Read the whole file at once
-            bin_file.write(self.retrieve_from_file(folder, file, user, pwd))
+            #bin_file.write(self.retrieve_from_file(folder, file, user, pwd))
+        with open(local_file, 'wb') as bin_file:
+            for chunk in self.retrieve_from_file(folder, file, user, pwd).iter_content(chunk_size=1024):
+                if chunk: # filter out keep-alive new chunks
+                    bin_file.write(chunk)
 
 
 def main():
